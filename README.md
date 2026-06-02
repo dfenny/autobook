@@ -36,18 +36,20 @@ uv sync
 
 ## Usage
 
-### Basic
+Autobook has two subcommands: `narrate` to synthesize speech, and `combine` to merge WAVs into an M4B.
+
+### narrate
 
 ```bash
-uv run autobook book.epub
+uv run autobook narrate book.epub
 ```
 
 Output is written to `output/<book-title>/`, one WAV file per chapter.
 
-### Preview chapters without generating audio
+#### Preview chapters without generating audio
 
 ```bash
-uv run autobook book.epub --list-chapters
+uv run autobook narrate book.epub --list-chapters
 ```
 
 ```
@@ -59,16 +61,16 @@ Found 32 chapter(s):
   ...
 ```
 
-### Choose a voice
+#### Choose a voice
 
 ```bash
 # American English voices
-uv run autobook book.epub --voice af_bella          # female
-uv run autobook book.epub --voice am_michael        # male
+uv run autobook narrate book.epub --voice af_bella          # female
+uv run autobook narrate book.epub --voice am_michael        # male
 
 # British English voices
-uv run autobook book.epub --voice bm_george --lang b
-uv run autobook book.epub --voice bf_emma   --lang b
+uv run autobook narrate book.epub --voice bm_george --lang b
+uv run autobook narrate book.epub --voice bf_emma   --lang b
 ```
 
 **All Kokoro voices:**
@@ -87,34 +89,53 @@ uv run autobook book.epub --voice bf_emma   --lang b
 | `bm_george` | Male | British |
 | `bm_lewis` | Male | British |
 
-### Adjust speed
+#### Adjust speed
 
 ```bash
-uv run autobook book.epub --speed 0.9    # slightly slower
-uv run autobook book.epub --speed 1.15   # slightly faster
+uv run autobook narrate book.epub --speed 0.9    # slightly slower
+uv run autobook narrate book.epub --speed 1.15   # slightly faster
 ```
 
-### Narrate specific chapters
+#### Narrate specific chapters
 
 ```bash
-uv run autobook book.epub --chapters 1-5      # chapters 1 through 5
-uv run autobook book.epub --chapters 2,4,6    # specific chapters
-uv run autobook book.epub --chapters 3        # a single chapter
+uv run autobook narrate book.epub --chapters 1-5      # chapters 1 through 5
+uv run autobook narrate book.epub --chapters 2,4,6    # specific chapters
+uv run autobook narrate book.epub --chapters 3        # a single chapter
 ```
 
-### Combine into a single audiobook file
+#### Narrate and combine in one step
 
 ```bash
-uv run autobook book.epub --combine
+uv run autobook narrate book.epub --combine
 ```
 
-Requires ffmpeg. Produces `output/<book-title>/audiobook.m4b` in addition to the individual chapter WAVs.
+Requires ffmpeg. Produces `output/<book-title>/audiobook.m4b` alongside the individual chapter WAVs.
 
-### Custom output directory
+#### Custom output directory
 
 ```bash
-uv run autobook book.epub --output ~/Audiobooks/my-book/
+uv run autobook narrate book.epub --output ~/Audiobooks/my-book/
 ```
+
+---
+
+### combine
+
+Merge previously narrated chapter WAVs into a single M4B — useful if you forgot to install ffmpeg before running `narrate`, or want to re-combine a subset of chapters.
+
+```bash
+# Basic — writes audiobook.m4b inside the same directory
+uv run autobook combine output/my-book/
+
+# Custom output path
+uv run autobook combine output/my-book/ --output ~/Desktop/my-book.m4b
+
+# Override the title stored in M4B metadata
+uv run autobook combine output/my-book/ --title "My Book"
+```
+
+If ffmpeg isn't installed, `combine` exits immediately with clear installation instructions rather than silently failing.
 
 ---
 
@@ -137,9 +158,9 @@ Engine ready (mps).
 To override the automatic selection:
 
 ```bash
-uv run autobook book.epub --device mps    # force Apple Silicon GPU
-uv run autobook book.epub --device cuda   # force NVIDIA GPU
-uv run autobook book.epub --device cpu    # force CPU
+uv run autobook narrate book.epub --device mps    # force Apple Silicon GPU
+uv run autobook narrate book.epub --device cuda   # force NVIDIA GPU
+uv run autobook narrate book.epub --device cpu    # force CPU
 ```
 
 ---
@@ -149,9 +170,9 @@ uv run autobook book.epub --device cpu    # force CPU
 If you'd rather not download the Kokoro model, the `edge` engine uses Microsoft's neural voices over the internet — no local model required.
 
 ```bash
-uv run autobook book.epub --engine edge
-uv run autobook book.epub --engine edge --voice en-GB-SoniaNeural
-uv run autobook book.epub --engine edge --voice en-US-GuyNeural
+uv run autobook narrate book.epub --engine edge
+uv run autobook narrate book.epub --engine edge --voice en-GB-SoniaNeural
+uv run autobook narrate book.epub --engine edge --voice en-US-GuyNeural
 ```
 
 To see all available edge-tts voices:
@@ -173,7 +194,7 @@ output/
     ├── chapter_02_chapter_i.wav
     ├── chapter_03_chapter_ii.wav
     ├── ...
-    └── audiobook.m4b          ← only with --combine
+    └── audiobook.m4b          ← --combine or `autobook combine`
 ```
 
 Each chapter WAV is:
@@ -186,26 +207,23 @@ Each chapter WAV is:
 ## All options
 
 ```
-usage: autobook [-h] [--engine {kokoro,edge}] [--voice VOICE] [--speed SPEED]
-                [--lang LANG] [--output OUTPUT] [--combine]
-                [--chapters CHAPTERS] [--chunk-words CHUNK_WORDS]
-                [--device {auto,cuda,mps,cpu}] [--list-chapters]
-                epub
+autobook narrate <epub> [options]
 
-positional arguments:
-  epub                        Path to the .epub file
-
-options:
-  --engine {kokoro,edge}      TTS backend (default: kokoro)
-  --voice VOICE               Voice name for the chosen engine
-  --speed SPEED               Speech speed multiplier, kokoro only (default: 1.0)
-  --lang LANG                 Kokoro language: 'a' American, 'b' British (default: a)
-  --output OUTPUT             Output directory (default: ./output/<book-title>/)
-  --combine                   Merge chapters into audiobook.m4b (requires ffmpeg)
-  --chapters CHAPTERS         Narrate a subset, e.g. '1-5' or '2,4,6'
-  --chunk-words CHUNK_WORDS   Max words per TTS chunk (default: 400)
+  --engine {kokoro,edge}        TTS backend (default: kokoro)
+  --voice VOICE                 Voice name for the chosen engine
+  --speed SPEED                 Speech speed multiplier, kokoro only (default: 1.0)
+  --lang LANG                   Kokoro language: 'a' American, 'b' British (default: a)
   --device {auto,cuda,mps,cpu}  Compute device for Kokoro (default: auto)
-  --list-chapters             Print detected chapters and exit
+  --output OUTPUT               Output directory (default: ./output/<book-title>/)
+  --chapters CHAPTERS           Narrate a subset, e.g. '1-5' or '2,4,6'
+  --chunk-words CHUNK_WORDS     Max words per TTS chunk (default: 400)
+  --combine                     Also merge into audiobook.m4b (requires ffmpeg)
+  --list-chapters               Print detected chapters and exit
+
+autobook combine <directory> [options]
+
+  --title TITLE                 M4B metadata title (default: derived from directory name)
+  --output OUTPUT               Output .m4b path (default: <directory>/audiobook.m4b)
 ```
 
 ---
