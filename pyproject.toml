@@ -1,0 +1,19 @@
+[project]
+name = "autobook"
+version = "0.1.0"
+description = "Convert EPUB ebooks into narrated audiobooks using neural TTS"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "ebooklib>=0.20",
+    "edge-tts>=7.2.8",
+    "kokoro>=0.9.4",
+    "lxml>=6.1.1",
+    "numpy>=2.4.6",
+    "pydub>=0.25.1",
+    "soundfile>=0.13.1",
+    "tqdm>=4.67.3",
+]
+
+[project.scripts]
+autobook = "autobook:main"
