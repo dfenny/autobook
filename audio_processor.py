@@ -6,6 +6,7 @@ optionally combines everything into a single M4B audiobook.
 from __future__ import annotations
 
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List
 
@@ -63,6 +64,9 @@ def combine_to_m4b(
 ) -> bool:
     """
     Merge all chapter WAV files into a single M4B audiobook using ffmpeg.
+
+    Encodes each chapter WAV → AAC in parallel, then stream-copies the
+    pre-encoded files into the final M4B (no re-encoding on the mux pass).
     Returns True on success. Requires ffmpeg in PATH.
     """
     if not chapter_files:
@@ -73,13 +77,37 @@ def combine_to_m4b(
 
     durations = [sf.info(str(f)).duration for f in chapter_files]
     total_seconds = sum(durations)
+    tmp_dir = output_path.parent / "_aac_tmp"
+    tmp_dir.mkdir(exist_ok=True)
 
-    concat_list = output_path.parent / "_concat.txt"
-    with concat_list.open("w") as f:
-        for p in chapter_files:
-            f.write(f"file '{p.resolve()}'\n")
+    # --- Phase 1: encode WAVs → AAC in parallel ----------------------------
+    aac_files: List[Path | None] = [None] * len(chapter_files)
 
-    # Build ffmetadata file with chapter markers
+    def encode_chapter(idx: int, wav: Path) -> tuple[int, Path, bool]:
+        aac = tmp_dir / f"{wav.stem}.aac"
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(wav),
+                "-c:a", "aac", "-b:a", "64k",
+                str(aac),
+            ],
+            capture_output=True,
+        )
+        return idx, aac, result.returncode == 0
+
+    print("  Encoding chapters (parallel)...")
+    with tqdm(total=len(chapter_files), unit="ch", desc="  Encoding") as pbar:
+        with ThreadPoolExecutor() as pool:
+            futures = {pool.submit(encode_chapter, i, f): i for i, f in enumerate(chapter_files)}
+            for fut in as_completed(futures):
+                idx, aac, ok = fut.result()
+                if not ok:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    return False
+                aac_files[idx] = aac
+                pbar.update(1)
+
+    # --- Phase 2: build ffmetadata with chapter markers --------------------
     meta_path = output_path.parent / "_meta.txt"
     with meta_path.open("w") as f:
         f.write(";FFMETADATA1\n")
@@ -94,34 +122,34 @@ def combine_to_m4b(
             f.write(f"START={offset_ms}\nEND={end_ms}\ntitle={chapter_title}\n")
             offset_ms = end_ms
 
+    # --- Phase 3: stream-copy pre-encoded AACs into M4B --------------------
+    concat_list = output_path.parent / "_concat.txt"
+    with concat_list.open("w") as f:
+        for aac in aac_files:
+            f.write(f"file '{aac.resolve()}'\n")
+
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
         "-i", str(concat_list),
         "-i", str(meta_path),
         "-map_metadata", "1",
-        "-threads", "0",
-        "-c:a", "aac", "-b:a", "64k",
+        "-c:a", "copy",
         "-movflags", "+faststart",
         "-progress", "pipe:1",
         "-nostats",
+        str(output_path),
     ]
-    cmd.append(str(output_path))
 
     success = False
     with tqdm(
         total=int(total_seconds),
         unit="s",
         unit_scale=True,
-        desc="  Encoding",
+        desc="  Muxing  ",
         bar_format="{l_bar}{bar}| {n:.0f}/{total:.0f}s [{elapsed}]",
     ) as pbar:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         elapsed = 0.0
         for line in proc.stdout:
             secs = _parse_out_time(line.strip())
@@ -129,11 +157,15 @@ def combine_to_m4b(
                 pbar.update(secs - elapsed)
                 elapsed = secs
         proc.wait()
-        pbar.update(int(total_seconds) - elapsed)  # snap to 100% on success
+        pbar.update(int(total_seconds) - elapsed)
         success = proc.returncode == 0
 
     concat_list.unlink(missing_ok=True)
     meta_path.unlink(missing_ok=True)
+    for aac in aac_files:
+        if aac:
+            aac.unlink(missing_ok=True)
+    tmp_dir.rmdir()
     return success
 
 
