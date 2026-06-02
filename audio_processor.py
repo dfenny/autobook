@@ -55,7 +55,12 @@ def normalize(audio: np.ndarray, target_dBFS: float = -18.0) -> np.ndarray:
     return (audio / peak * target_peak).clip(-1.0, 1.0).astype(np.float32)
 
 
-def combine_to_m4b(chapter_files: List[Path], output_path: Path, title: str = "") -> bool:
+def combine_to_m4b(
+    chapter_files: List[Path],
+    output_path: Path,
+    title: str = "",
+    chapter_titles: List[str] | None = None,
+) -> bool:
     """
     Merge all chapter WAV files into a single M4B audiobook using ffmpeg.
     Returns True on success. Requires ffmpeg in PATH.
@@ -66,24 +71,40 @@ def combine_to_m4b(chapter_files: List[Path], output_path: Path, title: str = ""
     if not _ffmpeg_available():
         return False
 
-    total_seconds = sum(sf.info(str(f)).duration for f in chapter_files)
+    durations = [sf.info(str(f)).duration for f in chapter_files]
+    total_seconds = sum(durations)
 
     concat_list = output_path.parent / "_concat.txt"
     with concat_list.open("w") as f:
         for p in chapter_files:
             f.write(f"file '{p.resolve()}'\n")
 
+    # Build ffmetadata file with chapter markers
+    meta_path = output_path.parent / "_meta.txt"
+    with meta_path.open("w") as f:
+        f.write(";FFMETADATA1\n")
+        if title:
+            f.write(f"title={title}\n")
+        offset_ms = 0
+        for i, (dur, path) in enumerate(zip(durations, chapter_files)):
+            chapter_title = (chapter_titles[i] if chapter_titles and i < len(chapter_titles)
+                             else _title_from_path(path))
+            end_ms = offset_ms + int(dur * 1000)
+            f.write("\n[CHAPTER]\nTIMEBASE=1/1000\n")
+            f.write(f"START={offset_ms}\nEND={end_ms}\ntitle={chapter_title}\n")
+            offset_ms = end_ms
+
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
         "-i", str(concat_list),
+        "-i", str(meta_path),
+        "-map_metadata", "1",
         "-c:a", "aac", "-b:a", "64k",
         "-movflags", "+faststart",
         "-progress", "pipe:1",
         "-nostats",
     ]
-    if title:
-        cmd += ["-metadata", f"title={title}"]
     cmd.append(str(output_path))
 
     success = False
@@ -111,7 +132,17 @@ def combine_to_m4b(chapter_files: List[Path], output_path: Path, title: str = ""
         success = proc.returncode == 0
 
     concat_list.unlink(missing_ok=True)
+    meta_path.unlink(missing_ok=True)
     return success
+
+
+def _title_from_path(path: Path) -> str:
+    """Derive a human-readable chapter title from a chapter_NNN_slug.wav filename."""
+    name = path.stem  # e.g. "chapter_01_the_beginning"
+    parts = name.split("_", 2)
+    if len(parts) == 3:
+        return parts[2].replace("_", " ").title()
+    return name.replace("_", " ").title()
 
 
 def _parse_out_time(line: str) -> float | None:

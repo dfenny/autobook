@@ -61,7 +61,12 @@ def collect_chapter_wavs(directory: Path) -> list[Path]:
     return sorted(directory.glob("chapter_*.wav"), key=chapter_num)
 
 
-def run_combine(chapter_files: list[Path], output_path: Path, title: str) -> None:
+def run_combine(
+    chapter_files: list[Path],
+    output_path: Path,
+    title: str,
+    chapter_titles: list[str] | None = None,
+) -> None:
     """Shared combine logic used by both subcommands."""
     if not chapter_files:
         print("No chapter WAV files found.", file=sys.stderr)
@@ -82,7 +87,7 @@ def run_combine(chapter_files: list[Path], output_path: Path, title: str) -> Non
     for f in chapter_files:
         print(f"  {f.name}")
 
-    success = combine_to_m4b(chapter_files, output_path, title=title)
+    success = combine_to_m4b(chapter_files, output_path, title=title, chapter_titles=chapter_titles)
     if success:
         size_mb = output_path.stat().st_size / 1_048_576
         print(f"\nAudiobook written: {output_path} ({size_mb:.1f} MB)")
@@ -187,8 +192,10 @@ def cmd_narrate(args: argparse.Namespace) -> None:
     print(f"\n{len(chapter_files)} chapter file(s) written to {output_dir}/")
 
     if args.combine:
-        m4b_path = output_dir / "audiobook.m4b"
-        run_combine(chapter_files, m4b_path, title=epub_path.stem)
+        book_title = epub_path.stem
+        m4b_path = output_dir / f"{slugify(book_title)}.m4b"
+        narrated_titles = [ch.title for ch in chapters_to_narrate if ch.title]
+        run_combine(chapter_files, m4b_path, title=book_title, chapter_titles=narrated_titles)
 
     print("\nDone.")
 
