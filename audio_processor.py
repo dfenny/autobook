@@ -11,6 +11,7 @@ from typing import List
 
 import numpy as np
 import soundfile as sf
+from tqdm import tqdm
 
 
 SAMPLE_RATE = 24000  # target sample rate for all output
@@ -65,6 +66,8 @@ def combine_to_m4b(chapter_files: List[Path], output_path: Path, title: str = ""
     if not _ffmpeg_available():
         return False
 
+    total_seconds = sum(sf.info(str(f)).duration for f in chapter_files)
+
     concat_list = output_path.parent / "_concat.txt"
     with concat_list.open("w") as f:
         for p in chapter_files:
@@ -76,14 +79,51 @@ def combine_to_m4b(chapter_files: List[Path], output_path: Path, title: str = ""
         "-i", str(concat_list),
         "-c:a", "aac", "-b:a", "64k",
         "-movflags", "+faststart",
+        "-progress", "pipe:1",
+        "-nostats",
     ]
     if title:
         cmd += ["-metadata", f"title={title}"]
     cmd.append(str(output_path))
 
-    result = subprocess.run(cmd, capture_output=True)
+    success = False
+    with tqdm(
+        total=int(total_seconds),
+        unit="s",
+        unit_scale=True,
+        desc="  Encoding",
+        bar_format="{l_bar}{bar}| {n:.0f}/{total:.0f}s [{elapsed}<{remaining}]",
+    ) as pbar:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        elapsed = 0.0
+        for line in proc.stdout:
+            secs = _parse_out_time(line.strip())
+            if secs is not None:
+                pbar.update(secs - elapsed)
+                elapsed = secs
+        proc.wait()
+        pbar.update(int(total_seconds) - elapsed)  # snap to 100% on success
+        success = proc.returncode == 0
+
     concat_list.unlink(missing_ok=True)
-    return result.returncode == 0
+    return success
+
+
+def _parse_out_time(line: str) -> float | None:
+    """Parse 'out_time=HH:MM:SS.ffffff' from ffmpeg -progress output → seconds."""
+    if not line.startswith("out_time="):
+        return None
+    time_str = line.split("=", 1)[1].strip()
+    try:
+        h, m, s = time_str.split(":")
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except (ValueError, IndexError):
+        return None
 
 
 def _silence(n_samples: int, sample_rate: int) -> np.ndarray:

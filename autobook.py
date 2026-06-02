@@ -100,6 +100,7 @@ def narrate_chapter(
     engine,
     output_dir: Path,
     max_words: int = 400,
+    pad: int = 2,
 ) -> Path | None:
     print(f"\n  [{chapter.index + 1}] {chapter.title}")
 
@@ -124,7 +125,7 @@ def narrate_chapter(
             audio_chunks.append(result)
             pbar.update(1)
 
-    stem = f"chapter_{chapter.index + 1:03d}_{slugify(chapter.title)}"
+    stem = f"chapter_{chapter.index + 1:0{pad}d}_{slugify(chapter.title)}"
     out_path = output_dir / f"{stem}.wav"
     write_chapter_audio(audio_chunks, out_path, sample_rate=engine.sample_rate)
     print(f"      → {out_path.name}")
@@ -176,9 +177,10 @@ def cmd_narrate(args: argparse.Namespace) -> None:
     device_label = getattr(engine, "device", "cloud")
     print(f"Engine ready ({device_label}).\n")
 
+    pad = len(str(len(chapters)))
     chapter_files = []
     for chapter in chapters_to_narrate:
-        out_path = narrate_chapter(chapter, engine, output_dir, max_words=args.chunk_words)
+        out_path = narrate_chapter(chapter, engine, output_dir, max_words=args.chunk_words, pad=pad)
         if out_path:
             chapter_files.append(out_path)
 
