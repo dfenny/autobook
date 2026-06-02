@@ -100,6 +100,7 @@ def combine_to_m4b(
         "-i", str(concat_list),
         "-i", str(meta_path),
         "-map_metadata", "1",
+        "-threads", "0",
         "-c:a", "aac", "-b:a", "64k",
         "-movflags", "+faststart",
         "-progress", "pipe:1",
