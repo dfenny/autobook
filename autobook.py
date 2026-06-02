@@ -15,6 +15,7 @@ Examples:
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -25,6 +26,7 @@ from epub_parser import Chapter, parse_epub
 from text_processor import clean_text, split_into_chunks
 from audio_processor import combine_to_m4b, write_chapter_audio, _ffmpeg_available
 from tts_engine import Backend, Device, make_engine
+from pov_detector import VoiceMap, load_manifest, _narrator_from_manifest
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +103,8 @@ def narrate_chapter(
     output_dir: Path,
     max_words: int = 400,
     pad: int = 2,
+    narrator_voice: str | None = None,
+    pov_voice: str | None = None,
 ) -> Path | None:
     print(f"\n  [{chapter.index + 1}] {chapter.title}")
 
@@ -112,14 +116,15 @@ def narrate_chapter(
     chunks_text = split_into_chunks(cleaned, max_words=max_words)
     audio_chunks = []
 
-    title_audio = engine.synthesize(chapter.title)
+    # Chapter title is announced in the narrator voice; body in the POV voice.
+    title_audio = engine.synthesize(chapter.title, voice=narrator_voice)
     if isinstance(title_audio, tuple):
         title_audio, _ = title_audio
     audio_chunks.append(title_audio)
 
     with tqdm(total=len(chunks_text), desc="      chunks", unit="chunk", leave=False) as pbar:
         for chunk in chunks_text:
-            result = engine.synthesize(chunk)
+            result = engine.synthesize(chunk, voice=pov_voice)
             if isinstance(result, tuple):
                 result, _ = result
             audio_chunks.append(result)
@@ -177,12 +182,51 @@ def cmd_narrate(args: argparse.Namespace) -> None:
     device_label = getattr(engine, "device", "cloud")
     print(f"Engine ready ({device_label}).\n")
 
+    # POV mode setup
+    voice_map: VoiceMap | None = None
+    if args.pov:
+        api_key = args.pov_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            print(
+                "  Note: No Anthropic API key found (set ANTHROPIC_API_KEY or use --pov-key).\n"
+                "  Falling back to title-based heuristic for POV detection.\n"
+                "  Accuracy may be limited for fantasy or unusual character names."
+            )
+        narrator_voice = args.voice or ("af_heart" if args.engine == "kokoro" else "en-US-JennyNeural")
+        # A manifest narrator key overrides --voice / the engine default
+        if args.characters:
+            manifest_narrator = _narrator_from_manifest(Path(args.characters))
+            if manifest_narrator:
+                narrator_voice = manifest_narrator
+        voice_map = VoiceMap.load(output_dir, engine=args.engine, narrator_voice=narrator_voice)
+        if args.characters:
+            manifest = load_manifest(Path(args.characters))
+            voice_map.populate_from_manifest(manifest)
+            print(f"  Loaded {len(manifest)} character(s) from {args.characters}")
+
     pad = len(str(len(chapters)))
     chapter_files = []
     for chapter in chapters_to_narrate:
-        out_path = narrate_chapter(chapter, engine, output_dir, max_words=args.chunk_words, pad=pad)
+        narrator_v = pov_v = None
+        if voice_map is not None:
+            name, gender, pov_v = voice_map.resolve(
+                chapter.title, chapter.text, api_key if api_key else None
+            )
+            narrator_v = voice_map.narrator_voice
+            label = f"{name} ({gender}) → {pov_v}" if name else f"narrator → {narrator_v}"
+            print(f"      POV: {label}")
+            voice_map.save(output_dir)
+
+        out_path = narrate_chapter(
+            chapter, engine, output_dir,
+            max_words=args.chunk_words, pad=pad,
+            narrator_voice=narrator_v, pov_voice=pov_v,
+        )
         if out_path:
             chapter_files.append(out_path)
+
+    if voice_map is not None:
+        voice_map.print_summary()
 
     print(f"\n{len(chapter_files)} chapter file(s) written to {output_dir}/")
 
@@ -279,6 +323,24 @@ def build_parser() -> argparse.ArgumentParser:
     narrate.add_argument(
         "--list-chapters", action="store_true",
         help="List detected chapters and exit without generating audio",
+    )
+    narrate.add_argument(
+        "--pov", action="store_true",
+        help="Enable multi-POV mode: detect the POV character per chapter and assign "
+             "a consistent, gender-matched voice throughout the book.",
+    )
+    narrate.add_argument(
+        "--pov-key", default=None, dest="pov_key", metavar="KEY",
+        help="Anthropic API key for Claude-based POV detection. "
+             "Defaults to the ANTHROPIC_API_KEY environment variable. "
+             "If neither is set, a title-parsing heuristic is used instead.",
+    )
+    narrate.add_argument(
+        "--characters", default=None, metavar="FILE",
+        help="Path to a YAML or JSON character manifest. Pre-defines POV characters, "
+             "their genders, and optional voice overrides. Constrains detection to the "
+             "known cast and eliminates gender guessing. "
+             "See characters.example.yaml for the format.",
     )
 
     # -- combine -------------------------------------------------------------

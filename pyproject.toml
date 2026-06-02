@@ -4,9 +4,11 @@ version = "0.1.0"
 description = "Convert EPUB ebooks into narrated audiobooks using neural TTS"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.105.2",
     "beautifulsoup4>=4.14.3",
     "ebooklib>=0.20",
     "edge-tts>=7.2.8",
+    "gender-guesser>=0.4.0",
     "kokoro>=0.9.4",
     "lxml>=6.1.1",
     "numpy>=2.4.6",

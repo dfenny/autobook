@@ -103,8 +103,9 @@ class KokoroEngine:
                 device=self._device,
             )
 
-    def synthesize(self, text: str) -> np.ndarray:
-        """Return float32 audio array at 24 kHz."""
+    def synthesize(self, text: str, voice: str | None = None) -> np.ndarray:
+        """Return float32 audio array at 24 kHz. Pass voice to override the engine default."""
+        effective_voice = voice or self.voice
         chunks: list[np.ndarray] = []
         with warnings.catch_warnings():
             # Kokoro's iSTFT vocoder triggers a PyTorch deprecation notice about
@@ -114,7 +115,7 @@ class KokoroEngine:
                 message=".*resized since it had shape.*",
                 category=UserWarning,
             )
-            for _gs, _ps, audio in self.pipeline(text, voice=self.voice, speed=self.speed):
+            for _gs, _ps, audio in self.pipeline(text, voice=effective_voice, speed=self.speed):
                 chunks.append(audio)
 
         if not chunks:
@@ -144,11 +145,12 @@ class EdgeEngine:
         self.voice = voice
         self.rate = rate
 
-    def synthesize(self, text: str) -> np.ndarray:
+    def synthesize(self, text: str, voice: str | None = None) -> np.ndarray:
         import edge_tts
+        effective_voice = voice or self.voice
 
         async def _run() -> bytes:
-            communicate = edge_tts.Communicate(text, self.voice, rate=self.rate)
+            communicate = edge_tts.Communicate(text, effective_voice, rate=self.rate)
             buf = io.BytesIO()
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":

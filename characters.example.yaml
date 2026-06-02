@@ -1,0 +1,49 @@
+# Character manifest for autobook --pov --characters
+#
+# Defines the POV characters in your book, their genders, and (optionally)
+# the exact Kokoro or edge-tts voice you want each one to use.
+#
+# Usage:
+#   uv run autobook narrate book.epub --pov --characters characters.yaml
+#
+# Rules:
+#   - name     Required. Can be a full name ("Kaladin Stormblessed") or just a
+#              first name ("Kaladin"). Either form will match chapter titles that
+#              contain any part of the name.
+#   - gender   Required. "male", "female", or "unknown".
+#   - voice    Optional. If omitted, a voice is auto-assigned from the gendered
+#              pool. If provided, it overrides auto-assignment entirely.
+#
+# The optional top-level "narrator" key sets the voice for chapters where no
+# POV character is detected (prologues, interludes, omniscient passages).
+# If omitted, the engine default is used (af_heart for Kokoro).
+#
+# narrator: af_heart
+
+# Kokoro voices (for reference when choosing overrides):
+#   Female: af_bella, af_nicole, af_sarah, af_sky, bf_emma, bf_isabella
+#   Male:   am_adam, am_michael, bm_george, bm_lewis
+#
+# edge-tts voices:
+#   Female: en-US-JennyNeural, en-US-AriaNeural, en-GB-SoniaNeural
+#   Male:   en-US-GuyNeural, en-US-DavisNeural, en-GB-RyanNeural
+
+characters:
+  - name: Kaladin
+    gender: male
+    voice: am_adam        # explicit override
+
+  - name: Shallan
+    gender: female
+    voice: af_bella       # explicit override
+
+  - name: Dalinar
+    gender: male
+                          # no voice — auto-assigned from the male pool
+
+  - name: Eshonai
+    gender: female
+                          # no voice — auto-assigned from the female pool
+
+  - name: Szeth
+    gender: male
