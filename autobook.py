@@ -53,9 +53,12 @@ def slugify(text: str) -> str:
 
 
 def collect_chapter_wavs(directory: Path) -> list[Path]:
-    """Return chapter WAVs from a directory, sorted by filename."""
-    files = sorted(directory.glob("chapter_*.wav"))
-    return files
+    """Return chapter WAVs from a directory, sorted by chapter number."""
+    def chapter_num(p: Path) -> int:
+        m = re.match(r"chapter_(\d+)_", p.name)
+        return int(m.group(1)) if m else 0
+
+    return sorted(directory.glob("chapter_*.wav"), key=chapter_num)
 
 
 def run_combine(chapter_files: list[Path], output_path: Path, title: str) -> None:
@@ -121,7 +124,7 @@ def narrate_chapter(
             audio_chunks.append(result)
             pbar.update(1)
 
-    stem = f"chapter_{chapter.index + 1:02d}_{slugify(chapter.title)}"
+    stem = f"chapter_{chapter.index + 1:03d}_{slugify(chapter.title)}"
     out_path = output_dir / f"{stem}.wav"
     write_chapter_audio(audio_chunks, out_path, sample_rate=engine.sample_rate)
     print(f"      → {out_path.name}")
