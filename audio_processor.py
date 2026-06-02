@@ -113,7 +113,7 @@ def combine_to_m4b(
         unit="s",
         unit_scale=True,
         desc="  Encoding",
-        bar_format="{l_bar}{bar}| {n:.0f}/{total:.0f}s [{elapsed}<{remaining}]",
+        bar_format="{l_bar}{bar}| {n:.0f}/{total:.0f}s [{elapsed}]",
     ) as pbar:
         proc = subprocess.Popen(
             cmd,
